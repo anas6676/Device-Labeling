@@ -1,0 +1,60 @@
+#!/bin/bash
+set -e
+echo "🚀 Starting Warehouse Device Labeling App Setup..."
+
+# Update system and install dependencies
+if command -v yum &> /dev/null; then
+    yum update -y && yum install -y git curl wget unzip docker
+    systemctl start docker && systemctl enable docker
+    usermod -a -G docker ec2-user
+elif command -v apt-get &> /dev/null; then
+    apt-get update -y && apt-get install -y git curl wget unzip
+    curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh
+    systemctl start docker && systemctl enable docker
+    usermod -a -G docker ubuntu
+fi
+
+# Install Docker Compose
+curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+chmod +x /usr/local/bin/docker-compose
+
+# Create app directory and clone repo
+mkdir -p /opt/warehouse-labeler
+cd /opt/warehouse-labeler
+git clone https://github.com/anas6676/Device-Labeling.git .
+chmod -R 755 .
+
+# Create management scripts
+cat > start.sh << 'EOF'
+#!/bin/bash
+cd /opt/warehouse-labeler
+docker-compose up -d
+echo "✅ App started! Access at:"
+echo "🌐 Frontend: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4):3001"
+echo "🔌 Backend: http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4):3000"
+EOF
+
+cat > stop.sh << 'EOF'
+#!/bin/bash
+cd /opt/warehouse-labeler
+docker-compose down
+echo "✅ App stopped!"
+EOF
+
+cat > status.sh << 'EOF'
+#!/bin/bash
+cd /opt/warehouse-labeler
+docker-compose ps
+EOF
+
+chmod +x *.sh
+
+# Set permissions and start app
+chown -R ec2-user:ec2-user . 2>/dev/null || chown -R ubuntu:ubuntu . 2>/dev/null
+docker-compose up -d
+
+# Wait and show status
+sleep 30
+docker-compose ps
+
+echo "🎉 Setup Complete! Use ./start.sh, ./stop.sh, ./status.sh to manage the app."
