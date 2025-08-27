@@ -135,11 +135,44 @@ app.get('/imports/:id/devices', async (req, res) => {
 	}
 });
 
+// List all devices (for database manager)
+app.get('/devices/all', async (req, res) => {
+	try {
+		const { rows } = await pool.query('SELECT * FROM devices ORDER BY id ASC');
+		return res.json(rows);
+	} catch (err) {
+		console.error(err);
+		return res.status(500).json({ error: 'Failed to list all devices' });
+	}
+});
+
 // Update device with parsing
 app.put('/devices/:id', async (req, res) => {
 	try {
 		const id = Number(req.params.id);
-		const { user_info, items_number, address } = req.body || {};
+		const { user_info, items_number, address, sn_device, import_id, full_name, email, phone_number, work_order, device_label } = req.body || {};
+		
+		// If direct database update (not from parsing)
+		if (sn_device !== undefined) {
+			const { rows } = await pool.query(
+				`UPDATE devices SET
+				  sn_device = $1,
+				  import_id = $2,
+				  full_name = $3,
+				  email = $4,
+				  phone_number = $5,
+				  work_order = $6,
+				  device_label = $7,
+				  items_number = $8,
+				  address = $9
+				WHERE id = $10
+				RETURNING *`,
+				[sn_device, import_id, full_name, email, phone_number, work_order, device_label, items_number, address, id]
+			);
+			return res.json(rows[0]);
+		}
+		
+		// Original parsing logic
 		const parsed = user_info ? parseUserInfo(user_info) : {};
 		const values = [
 			parsed.full_name || null,
@@ -175,6 +208,18 @@ app.put('/devices/:id', async (req, res) => {
 	}
 });
 
+// Delete device
+app.delete('/devices/:id', async (req, res) => {
+	try {
+		const id = Number(req.params.id);
+		await pool.query('DELETE FROM devices WHERE id = $1', [id]);
+		return res.status(204).send();
+	} catch (err) {
+		console.error(err);
+		return res.status(500).json({ error: 'Failed to delete device' });
+	}
+});
+
 // Report endpoints (aliases)
 app.get('/imports/:id/reports/label-carton', (req, res) => handleReport(req, res, 'label-carton'));
 app.get('/imports/:id/reports/device-label', (req, res) => handleReport(req, res, 'device-label'));
@@ -186,20 +231,10 @@ async function handleReport(req, res, type) {
 	try {
 		const importId = Number(req.params.id);
 		const format = (req.query.format || 'xlsx').toString();
-		// Fetch devices for this import
 		const { rows } = await pool.query('SELECT * FROM devices WHERE import_id = $1 ORDER BY id ASC', [importId]);
-		// Fetch batch tag for filename prefix
-		const { rows: importRows } = await pool.query('SELECT batch_tag FROM imports WHERE id = $1', [importId]);
-		const batchTagRaw = importRows[0]?.batch_tag || `import-${importId}`;
-		const safeBatchTag = String(batchTagRaw)
-			.replace(/[^a-zA-Z0-9._-]+/g, '-')
-			.replace(/-+/g, '-')
-			.replace(/^-|-$/g, '');
-
 		const { buffer, filename, contentType } = await generateReports(type, format, rows);
-		const finalFilename = `${safeBatchTag}-${filename}`;
 		res.setHeader('Content-Type', contentType);
-		res.setHeader('Content-Disposition', `attachment; filename="${finalFilename}"`);
+		res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 		return res.send(buffer);
 	} catch (err) {
 		console.error(err);
