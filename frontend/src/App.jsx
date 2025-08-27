@@ -18,8 +18,44 @@ export default function App() {
   const [editingImport, setEditingImport] = useState(null)
   const hiddenUploadRef = useRef(null)
   const [editBatchTag, setEditBatchTag] = useState('')
+  const [deviceFilter, setDeviceFilter] = useState('')
+  const [importFilter, setImportFilter] = useState('')
 
   const selectedImport = useMemo(() => imports.find(i => String(i.id) === String(selectedImportId)), [imports, selectedImportId])
+  
+  const filteredDevices = useMemo(() => {
+    if (!deviceFilter.trim()) return dbDevices
+    
+    const filter = deviceFilter.toLowerCase().trim()
+    return dbDevices.filter(device => 
+      String(device.id).includes(filter) ||
+      (device.sn_device && device.sn_device.toLowerCase().includes(filter)) ||
+      (device.full_name && device.full_name.toLowerCase().includes(filter)) ||
+      (device.email && device.email.toLowerCase().includes(filter)) ||
+      (device.phone_number && device.phone_number.toLowerCase().includes(filter)) ||
+      (device.work_order && device.work_order.toLowerCase().includes(filter)) ||
+      (device.device_label && device.device_label.toLowerCase().includes(filter)) ||
+      (device.items_number && device.items_number.toLowerCase().includes(filter)) ||
+      (device.address && device.address.toLowerCase().includes(filter))
+    )
+  }, [dbDevices, deviceFilter])
+  
+  // Helper function to highlight filtered text
+  const highlightText = (text, filter) => {
+    if (!filter || !text) return text
+    const regex = new RegExp(`(${filter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi')
+    return text.toString().replace(regex, '<mark style="background: #ffeb3b; padding: 2px 4px; border-radius: 3px;">$1</mark>')
+  }
+  
+  const filteredImports = useMemo(() => {
+    if (!importFilter.trim()) return dbImports
+    
+    const filter = importFilter.toLowerCase().trim()
+    return dbImports.filter(imp => 
+      String(imp.id).includes(filter) ||
+      (imp.batch_tag && imp.batch_tag.toLowerCase().includes(filter))
+    )
+  }, [dbImports, importFilter])
 
   function hasSavedData(d) {
     return Boolean(
@@ -59,6 +95,26 @@ export default function App() {
     refreshAllDevices()
   }, [])
   useEffect(() => { refreshDevices(selectedImportId) }, [selectedImportId])
+  
+  // Keyboard shortcuts for quick filtering
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.ctrlKey && e.key === 'f') {
+        e.preventDefault()
+        if (activeTab === 'database') {
+          // Focus the appropriate filter based on which table is visible
+          const deviceFilterInput = document.querySelector('input[placeholder*="Quick filter by ID, SN"]')
+          const importFilterInput = document.querySelector('input[placeholder*="Quick filter by ID or Batch"]')
+          
+          if (deviceFilterInput) deviceFilterInput.focus()
+          if (importFilterInput) importFilterInput.focus()
+        }
+      }
+    }
+    
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [activeTab])
 
   async function createBatch() {
     if (!batchTag.trim()) return
@@ -473,6 +529,59 @@ export default function App() {
       cursor: 'pointer',
       transition: 'all 0.2s ease',
       margin: '0 4px'
+    },
+    filterSection: {
+      marginBottom: '20px',
+      padding: '16px',
+      borderRadius: '8px',
+      background: isDarkMode 
+        ? 'linear-gradient(135deg, #2c3e50, #34495e)'
+        : 'linear-gradient(135deg, #ecf0f1, #bdc3c7)',
+      border: isDarkMode 
+        ? '1px solid #34495e'
+        : '1px solid #bdc3c7'
+    },
+    filterRow: {
+      display: 'flex',
+      gap: '12px',
+      alignItems: 'center',
+      marginBottom: '12px'
+    },
+    filterInput: {
+      flex: 1,
+      padding: '12px 16px',
+      borderRadius: '8px',
+      border: isDarkMode 
+        ? '1px solid #34495e'
+        : '1px solid #ddd',
+      fontSize: '14px',
+      transition: 'all 0.2s ease',
+      background: isDarkMode ? '#2c3e50' : 'white',
+      color: isDarkMode ? '#e0e0e0' : '#333',
+      boxShadow: isDarkMode 
+        ? '0 2px 8px rgba(0,0,0,0.3)'
+        : '0 2px 8px rgba(0,0,0,0.1)'
+    },
+    filterInfo: {
+      padding: '8px 12px',
+      borderRadius: '6px',
+      background: isDarkMode 
+        ? 'rgba(39, 174, 96, 0.1)'
+        : 'rgba(39, 174, 96, 0.1)',
+      border: isDarkMode 
+        ? '1px solid rgba(39, 174, 96, 0.3)'
+        : '1px solid rgba(39, 174, 96, 0.3)'
+    },
+    noResults: {
+      textAlign: 'center',
+      padding: '20px',
+      background: isDarkMode 
+        ? 'rgba(52, 73, 94, 0.1)'
+        : 'rgba(236, 240, 241, 0.5)',
+      borderRadius: '8px',
+      border: isDarkMode 
+        ? '1px solid rgba(52, 73, 94, 0.3)'
+        : '1px solid rgba(189, 195, 199, 0.3)'
     }
   }
 
@@ -727,7 +836,44 @@ export default function App() {
       </div>
 
       <div style={styles.section}>
-        <h3 style={styles.sectionTitle}>📦 Imports Table</h3>
+        <h3 style={styles.sectionTitle}>
+          📦 Imports Table 
+          <span style={{ 
+            fontSize: '14px', 
+            fontWeight: '400', 
+            marginLeft: '12px',
+            color: isDarkMode ? '#bdc3c7' : '#7f8c8d'
+          }}>
+            ({filteredImports.length} of {dbImports.length} imports)
+          </span>
+        </h3>
+        
+        {/* Quick Filter Section for Imports */}
+        <div style={styles.filterSection}>
+          <div style={styles.filterRow}>
+            <input
+              style={styles.filterInput}
+              placeholder="🔍 Quick filter by ID or Batch Tag..."
+              value={importFilter}
+              onChange={(e) => setImportFilter(e.target.value)}
+            />
+            <button
+              style={{...styles.button, ...styles.secondaryButton, padding: '8px 16px'}}
+              onClick={() => setImportFilter('')}
+              title="Clear filter"
+            >
+              🗑️ Clear
+            </button>
+          </div>
+          {importFilter && (
+            <div style={styles.filterInfo}>
+              <span style={{ color: isDarkMode ? '#27ae60' : '#27ae60', fontWeight: '600' }}>
+                🔍 Filtering: "{importFilter}" • Showing {filteredImports.length} of {dbImports.length} imports
+              </span>
+            </div>
+          )}
+        </div>
+        
         <div style={{ overflowX: 'auto' }}>
           <table style={styles.table}>
             <thead>
@@ -739,7 +885,7 @@ export default function App() {
               </tr>
             </thead>
             <tbody>
-              {dbImports.map((imp) => (
+              {filteredImports.map((imp) => (
                 <tr key={imp.id} style={styles.tableRow}>
                   <td style={styles.tableCell}>#{imp.id}</td>
                   <td style={styles.tableCell}>
@@ -797,26 +943,75 @@ export default function App() {
       </div>
 
       <div style={styles.section}>
-        <h3 style={styles.sectionTitle}>📱 Devices Table</h3>
+        <h3 style={styles.sectionTitle}>
+          📱 Devices Table 
+          <span style={{ 
+            fontSize: '14px', 
+            fontWeight: '400', 
+            marginLeft: '12px',
+            color: isDarkMode ? '#bdc3c7' : '#7f8c8d'
+          }}>
+            ({filteredDevices.length} of {dbDevices.length} devices)
+          </span>
+        </h3>
+        
+        {/* Quick Filter Section */}
+        <div style={styles.filterSection}>
+          <div style={styles.filterRow}>
+            <input
+              style={styles.filterInput}
+              placeholder="🔍 Quick filter by ID, SN, Name, Email, Phone, Work Order, Device Label, Items, or Address..."
+              value={deviceFilter}
+              onChange={(e) => setDeviceFilter(e.target.value)}
+            />
+            <button
+              style={{...styles.button, ...styles.secondaryButton, padding: '8px 16px'}}
+              onClick={() => setDeviceFilter('')}
+              title="Clear filter"
+            >
+              🗑️ Clear
+            </button>
+          </div>
+          {deviceFilter && (
+            <div style={styles.filterInfo}>
+              <span style={{ color: isDarkMode ? '#27ae60' : '#27ae60', fontWeight: '600' }}>
+                🔍 Filtering: "{deviceFilter}" • Showing {filteredDevices.length} of {dbDevices.length} devices
+              </span>
+            </div>
+          )}
+        </div>
+        
         <div style={{ overflowX: 'auto' }}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.tableHeader}>ID</th>
-                <th style={styles.tableHeader}>SN Device</th>
-                <th style={styles.tableHeader}>Import ID</th>
-                <th style={styles.tableHeader}>Full Name</th>
-                <th style={styles.tableHeader}>Email</th>
-                <th style={styles.tableHeader}>Phone</th>
-                <th style={styles.tableHeader}>Work Order</th>
-                <th style={styles.tableHeader}>Device Label</th>
-                <th style={styles.tableHeader}>Items Number</th>
-                <th style={styles.tableHeader}>Address</th>
-                <th style={styles.tableHeader}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dbDevices.map((device) => (
+          {filteredDevices.length === 0 ? (
+            <div style={styles.noResults}>
+              <p style={{ 
+                textAlign: 'center', 
+                padding: '40px', 
+                color: isDarkMode ? '#bdc3c7' : '#7f8c8d',
+                fontSize: '16px'
+              }}>
+                {deviceFilter ? `🔍 No devices found matching "${deviceFilter}"` : '📱 No devices available'}
+              </p>
+            </div>
+          ) : (
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.tableHeader}>ID</th>
+                  <th style={styles.tableHeader}>SN Device</th>
+                  <th style={styles.tableHeader}>Import ID</th>
+                  <th style={styles.tableHeader}>Full Name</th>
+                  <th style={styles.tableHeader}>Email</th>
+                  <th style={styles.tableHeader}>Phone</th>
+                  <th style={styles.tableHeader}>Work Order</th>
+                  <th style={styles.tableHeader}>Device Label</th>
+                  <th style={styles.tableHeader}>Items Number</th>
+                  <th style={styles.tableHeader}>Address</th>
+                  <th style={styles.tableHeader}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredDevices.map((device) => (
                 <tr key={device.id} style={styles.tableRow}>
                   <td style={styles.tableCell}>#{device.id}</td>
                   <td style={styles.tableCell}>
@@ -956,6 +1151,7 @@ export default function App() {
               ))}
             </tbody>
           </table>
+          )}
         </div>
       </div>
     </>
