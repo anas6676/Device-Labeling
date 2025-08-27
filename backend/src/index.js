@@ -1,0 +1,219 @@
+import express from 'express';
+import cors from 'cors';
+import multer from 'multer';
+import { pool, initSchema } from './lib/db.js';
+import { parseUserInfo } from './lib/parsers.js';
+import { generateReports } from './lib/reports.js';
+
+const app = express();
+const upload = multer({ storage: multer.memoryStorage() });
+
+app.use(cors());
+app.use(express.json());
+
+app.get('/health', (req, res) => res.json({ ok: true }));
+
+// Create a new batch
+app.post('/imports', async (req, res) => {
+	try {
+		const { batch_tag } = req.body || {};
+		if (!batch_tag) return res.status(400).json({ error: 'batch_tag is required' });
+		const { rows } = await pool.query(
+			'INSERT INTO imports (batch_tag) VALUES ($1) RETURNING *',
+			[batch_tag]
+		);
+		return res.status(201).json(rows[0]);
+	} catch (err) {
+		console.error(err);
+		return res.status(500).json({ error: 'Failed to create batch' });
+	}
+});
+
+// Edit batch tag
+app.put('/imports/:id', async (req, res) => {
+	try {
+		const id = Number(req.params.id);
+		const { batch_tag } = req.body || {};
+		if (!batch_tag || !batch_tag.trim()) return res.status(400).json({ error: 'batch_tag is required' });
+		const { rows } = await pool.query('UPDATE imports SET batch_tag = $1 WHERE id = $2 RETURNING *', [batch_tag.trim(), id]);
+		if (!rows[0]) return res.status(404).json({ error: 'Batch not found' });
+		return res.json(rows[0]);
+	} catch (err) {
+		console.error(err);
+		return res.status(500).json({ error: 'Failed to update batch' });
+	}
+});
+
+// Delete batch (cascades to devices)
+app.delete('/imports/:id', async (req, res) => {
+	try {
+		const id = Number(req.params.id);
+		const result = await pool.query('DELETE FROM imports WHERE id = $1', [id]);
+		return res.status(204).send();
+	} catch (err) {
+		console.error(err);
+		return res.status(500).json({ error: 'Failed to delete batch' });
+	}
+});
+
+// Upload Excel with SNs, insert devices
+app.post('/imports/:id/devices/upload', upload.single('file'), async (req, res) => {
+	try {
+		const importId = Number(req.params.id);
+		if (!Number.isFinite(importId)) return res.status(400).json({ error: 'Invalid import id' });
+		if (!req.file) return res.status(400).json({ error: 'file is required (Excel)' });
+
+		const buffer = req.file.buffer;
+		const xlsx = await import('xlsx');
+		const workbook = xlsx.read(buffer, { type: 'buffer' });
+		const sheetName = workbook.SheetNames[0];
+		const sheet = workbook.Sheets[sheetName];
+		const rows = xlsx.utils.sheet_to_json(sheet, { header: 1 });
+
+		const headerValuesToSkip = new Set(['sn', 'serial', 'serial number', 'sn_device', 'device_sn']);
+		const pairs = [];
+		for (let i = 0; i < rows.length; i++) {
+			const row = rows[i];
+			if (!row) continue;
+			const firstCell = row[0];
+			if (!firstCell) continue;
+			const sn = String(firstCell).trim();
+			if (!sn) continue;
+			if (headerValuesToSkip.has(sn.toLowerCase())) continue;
+			const items = row[1] != null ? String(row[1]).trim() : null;
+			pairs.push({ sn, items_number: items });
+		}
+
+		if (pairs.length === 0) return res.status(400).json({ error: 'No serial numbers found' });
+
+		const client = await pool.connect();
+		try {
+			await client.query('BEGIN');
+			for (const { sn, items_number } of pairs) {
+				await client.query(
+					`INSERT INTO devices (sn_device, import_id, items_number)
+					 VALUES ($1, $2, $3)
+					 ON CONFLICT (import_id, sn_device) DO UPDATE SET items_number = COALESCE(EXCLUDED.items_number, devices.items_number)`,
+					[sn, importId, items_number || null]
+				);
+			}
+			await client.query('COMMIT');
+		} catch (e) {
+			await client.query('ROLLBACK');
+			throw e;
+		} finally {
+			client.release();
+		}
+
+		return res.json({ inserted: pairs.length });
+	} catch (err) {
+		console.error(err);
+		return res.status(500).json({ error: 'Failed to upload devices' });
+	}
+});
+
+// List all batches
+app.get('/imports', async (req, res) => {
+	try {
+		const { rows } = await pool.query('SELECT * FROM imports ORDER BY created_at DESC');
+		return res.json(rows);
+	} catch (err) {
+		console.error(err);
+		return res.status(500).json({ error: 'Failed to list imports' });
+	}
+});
+
+// List devices in a batch
+app.get('/imports/:id/devices', async (req, res) => {
+	try {
+		const importId = Number(req.params.id);
+		const { rows } = await pool.query('SELECT * FROM devices WHERE import_id = $1 ORDER BY id ASC', [importId]);
+		return res.json(rows);
+	} catch (err) {
+		console.error(err);
+		return res.status(500).json({ error: 'Failed to list devices' });
+	}
+});
+
+// Update device with parsing
+app.put('/devices/:id', async (req, res) => {
+	try {
+		const id = Number(req.params.id);
+		const { user_info, items_number, address } = req.body || {};
+		const parsed = user_info ? parseUserInfo(user_info) : {};
+		const values = [
+			parsed.full_name || null,
+			parsed.email || null,
+			parsed.phone_number || null,
+			parsed.work_order || null,
+			parsed.device_label || null,
+			parsed.sn_device || null,
+			items_number || null,
+			address || null,
+			user_info || null,
+			id
+		];
+		const { rows } = await pool.query(
+			`UPDATE devices SET
+			  full_name = $1,
+			  email = $2,
+			  phone_number = $3,
+			  work_order = $4,
+			  device_label = $5,
+			  sn_device = COALESCE($6, sn_device),
+			  items_number = $7,
+			  address = $8,
+			  user_info_raw = $9
+			WHERE id = $10
+			RETURNING *`,
+			values
+		);
+		return res.json(rows[0]);
+	} catch (err) {
+		console.error(err);
+		return res.status(500).json({ error: 'Failed to update device' });
+	}
+});
+
+// Report endpoints (aliases)
+app.get('/imports/:id/reports/label-carton', (req, res) => handleReport(req, res, 'label-carton'));
+app.get('/imports/:id/reports/device-label', (req, res) => handleReport(req, res, 'device-label'));
+app.get('/imports/:id/reports/asset-import', (req, res) => handleReport(req, res, 'asset-import'));
+
+app.get('/imports/:id/reports/:type', (req, res) => handleReport(req, res, req.params.type));
+
+async function handleReport(req, res, type) {
+	try {
+		const importId = Number(req.params.id);
+		const format = (req.query.format || 'xlsx').toString();
+		// Fetch devices for this import
+		const { rows } = await pool.query('SELECT * FROM devices WHERE import_id = $1 ORDER BY id ASC', [importId]);
+		// Fetch batch tag for filename prefix
+		const { rows: importRows } = await pool.query('SELECT batch_tag FROM imports WHERE id = $1', [importId]);
+		const batchTagRaw = importRows[0]?.batch_tag || `import-${importId}`;
+		const safeBatchTag = String(batchTagRaw)
+			.replace(/[^a-zA-Z0-9._-]+/g, '-')
+			.replace(/-+/g, '-')
+			.replace(/^-|-$/g, '');
+
+		const { buffer, filename, contentType } = await generateReports(type, format, rows);
+		const finalFilename = `${safeBatchTag}-${filename}`;
+		res.setHeader('Content-Type', contentType);
+		res.setHeader('Content-Disposition', `attachment; filename="${finalFilename}"`);
+		return res.send(buffer);
+	} catch (err) {
+		console.error(err);
+		return res.status(500).json({ error: 'Failed to generate report' });
+	}
+}
+
+const port = process.env.PORT || 3000;
+
+initSchema()
+	.then(() => {
+		app.listen(port, () => console.log(`API on http://0.0.0.0:${port}`));
+	})
+	.catch((e) => {
+		console.error('Failed to init schema', e);
+		process.exit(1);
+	});

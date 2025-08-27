@@ -1,0 +1,15 @@
+{
+  "name": "warehouse-labeler",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:*\"",
+    "dev:server": "npm --prefix backend run dev",
+    "dev:client": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix backend start"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
