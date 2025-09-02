@@ -81,9 +81,9 @@ fi
 # Install additional tools
 echo "🔧 Installing additional tools..."
 if command -v yum &> /dev/null; then
-    yum install -y jq tree htop cronie
+    yum install -y jq tree htop cronie awscli
 elif command -v apt-get &> /dev/null; then
-    apt-get install -y jq tree htop cron
+    apt-get install -y jq tree htop cron awscli
 fi
 
 # Create app directory
@@ -113,6 +113,12 @@ POSTGRES_DB=warehouse
 APP_PORT=3000
 FRONTEND_PORT=3001
 DB_PORT=5432
+
+# Optional S3 backup/restore
+# Set to your bucket name to enable S3 uploads/restores, e.g. my-backups-bucket
+BACKUP_S3_BUCKET=
+# Optional S3 prefix (folder path inside the bucket), e.g. warehouse-labeler/
+BACKUP_S3_PREFIX=warehouse-labeler/
 EOF
 
 # Create systemd service for auto-start
@@ -216,6 +222,24 @@ gzip $BACKUP_DIR/backup_$DATE.sql
 
 echo "🧹 Cleaning old backups (keeping last 7 days)..."
 find $BACKUP_DIR -name "*.sql.gz" -mtime +7 -delete
+
+# Load optional S3 config from .env
+set -a
+[ -f ./.env ] && . ./.env
+set +a
+
+# Upload to S3 if configured and awscli is available
+if [ -n "${BACKUP_S3_BUCKET}" ] && command -v aws &> /dev/null; then
+    S3_PREFIX=${BACKUP_S3_PREFIX:-warehouse-labeler/}
+    S3_KEY="${S3_PREFIX}backup_${DATE}.sql.gz"
+    echo "☁️  Uploading backup to s3://${BACKUP_S3_BUCKET}/${S3_KEY}"
+    aws s3 cp "$BACKUP_DIR/backup_${DATE}.sql.gz" "s3://${BACKUP_S3_BUCKET}/${S3_KEY}"
+    if [ $? -eq 0 ]; then
+        echo "✅ S3 upload completed"
+    else
+        echo "⚠️  S3 upload failed"
+    fi
+fi
 
 echo "✅ Backup completed: $BACKUP_DIR/backup_$DATE.sql.gz"
 EOF
@@ -370,6 +394,28 @@ sleep 30
 # Check status
 echo "📊 Checking application status..."
 docker-compose ps
+
+# Attempt auto-restore from S3 if DB is empty and S3 config is present
+echo "🔍 Checking if database is empty for optional auto-restore..."
+set -a
+[ -f ./.env ] && . ./.env
+set +a
+TABLE_COUNT=$(docker-compose exec -T db psql -U postgres -d warehouse -tAc "select count(1) from pg_tables where schemaname='public';" 2>/dev/null || echo "-1")
+if [ "$TABLE_COUNT" = "0" ] && [ -n "$BACKUP_S3_BUCKET" ] && command -v aws &> /dev/null; then
+    echo "🧭 Database appears empty. Searching S3 for latest backup..."
+    S3_PREFIX=${BACKUP_S3_PREFIX:-warehouse-labeler/}
+    LATEST=$(aws s3 ls "s3://${BACKUP_S3_BUCKET}/${S3_PREFIX}" | awk '{print $4}' | sort | tail -n1)
+    if [ -n "$LATEST" ]; then
+        echo "⬇️  Downloading s3://${BACKUP_S3_BUCKET}/${S3_PREFIX}${LATEST}"
+        aws s3 cp "s3://${BACKUP_S3_BUCKET}/${S3_PREFIX}${LATEST}" /tmp/backup.sql.gz && \
+        gunzip -c /tmp/backup.sql.gz | docker-compose exec -T db psql -U postgres warehouse && \
+        echo "✅ Auto-restore completed from S3."
+    else
+        echo "ℹ️  No backups found in S3 prefix ${S3_PREFIX}"
+    fi
+else
+    echo "ℹ️  Auto-restore skipped (DB not empty, S3 not configured, or AWS CLI missing)."
+fi
 
 # Get public IP
 echo "🌐 Getting public IP address..."
