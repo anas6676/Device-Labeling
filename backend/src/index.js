@@ -70,7 +70,35 @@ app.post('/imports/:id/devices/upload', upload.single('file'), async (req, res) 
 		const sheet = workbook.Sheets[sheetName];
 		const rows = xlsx.utils.sheet_to_json(sheet, { header: 1 });
 
-		const headerValuesToSkip = new Set(['sn', 'serial', 'serial number', 'sn_device', 'device_sn']);
+		// Detect Category/model-name metadata upload
+		if (Array.isArray(rows) && rows.length > 0) {
+			const headerRow = rows[0].map((v) => String(v || '').trim().toLowerCase());
+			const categoryCol = headerRow.findIndex((h) => h === 'category');
+			const modelNameCol = headerRow.findIndex((h) => h === 'model name' || h === 'model_name' || h === 'model');
+			if (categoryCol !== -1 && modelNameCol !== -1) {
+				// Find first data row with at least one non-empty value
+				let categoryVal = null;
+				let modelNameVal = null;
+				for (let r = 1; r < rows.length; r++) {
+					const row = rows[r] || [];
+					const c = row[categoryCol] != null ? String(row[categoryCol]).trim() : '';
+					const m = row[modelNameCol] != null ? String(row[modelNameCol]).trim() : '';
+					if (c || m) {
+						categoryVal = c || null;
+						modelNameVal = m || null;
+						break;
+					}
+				}
+				// If no data row found, treat as empty
+				const { rowCount } = await pool.query(
+					`UPDATE devices SET category = $1, model_name = $2 WHERE import_id = $3`,
+					[categoryVal, modelNameVal, importId]
+				);
+				return res.json({ updated_devices: rowCount, category: categoryVal, model_name: modelNameVal });
+			}
+		}
+
+		const headerValuesToSkip = new Set(['sn', 'serial', 'serial number', 'sn_device', 'device_sn', 'category', 'model name', 'model_name', 'model']);
 		const pairs = [];
 		for (let i = 0; i < rows.length; i++) {
 			const row = rows[i];
@@ -144,6 +172,101 @@ app.get('/devices/all', async (req, res) => {
 		console.error(err);
 		return res.status(500).json({ error: 'Failed to list all devices' });
 	}
+});
+
+// Bulk update devices from Excel by sn_device
+app.post('/devices/bulk-update', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) return res.status(400).json({ error: 'file is required (Excel)' });
+
+        const buffer = req.file.buffer;
+        const xlsx = await import('xlsx');
+        const workbook = xlsx.read(buffer, { type: 'buffer' });
+        const sheetName = workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
+        const rows = xlsx.utils.sheet_to_json(sheet, { header: 1 });
+
+        if (!rows || rows.length < 2) {
+            return res.status(400).json({ error: 'No data rows found in sheet' });
+        }
+
+        const headerRow = rows[0].map((v) => String(v || '').trim());
+        // Map headers (case-insensitive trim)
+        const idxOf = (nameVariants) => {
+            const lower = headerRow.map((h) => h.toLowerCase());
+            for (const variant of nameVariants) {
+                const i = lower.indexOf(variant.toLowerCase());
+                if (i !== -1) return i;
+            }
+            return -1;
+        };
+
+        const serialCol = idxOf(['serial', 'sn', 'sn_device', 'serial number']);
+        const frdcCol = idxOf(['frdc']);
+        const taskCodeCol = idxOf(['taskcode', 'task code']);
+        const nameCol = idxOf(['name', 'full_name', 'full name']);
+        const addressCol = idxOf(['address']);
+        const emailCol = idxOf(['useremail', 'email', 'user email']);
+        const phoneCol = idxOf(['userphone', 'phone', 'user phone']);
+
+        if (serialCol === -1) {
+            return res.status(400).json({ error: 'Missing required column: Serial' });
+        }
+
+        let updated = 0;
+        let skipped = 0;
+
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            for (let r = 1; r < rows.length; r++) {
+                const row = rows[r] || [];
+                const serial = row[serialCol] != null ? String(row[serialCol]).trim() : '';
+                if (!serial) { skipped++; continue; }
+
+                const mapped = {
+                    device_label: frdcCol !== -1 && row[frdcCol] != null ? String(row[frdcCol]).trim() : null,
+                    items_number: taskCodeCol !== -1 && row[taskCodeCol] != null ? String(row[taskCodeCol]).trim() : null,
+                    full_name: nameCol !== -1 && row[nameCol] != null ? String(row[nameCol]).trim() : null,
+                    address: addressCol !== -1 && row[addressCol] != null ? String(row[addressCol]).trim() : null,
+                    email: emailCol !== -1 && row[emailCol] != null ? String(row[emailCol]).trim() : null,
+                    phone_number: phoneCol !== -1 && row[phoneCol] != null ? String(row[phoneCol]).trim() : null
+                };
+
+                const result = await client.query(
+                    `UPDATE devices SET
+                        device_label = COALESCE($2, device_label),
+                        items_number = COALESCE($3, items_number),
+                        full_name = COALESCE($4, full_name),
+                        address = COALESCE($5, address),
+                        email = COALESCE($6, email),
+                        phone_number = COALESCE($7, phone_number)
+                     WHERE sn_device = $1`,
+                    [
+                        serial,
+                        mapped.device_label,
+                        mapped.items_number,
+                        mapped.full_name,
+                        mapped.address,
+                        mapped.email,
+                        mapped.phone_number
+                    ]
+                );
+                updated += result.rowCount || 0;
+            }
+            await client.query('COMMIT');
+        } catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
+        } finally {
+            client.release();
+        }
+
+        return res.json({ updated, skipped });
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ error: 'Failed to bulk update devices' });
+    }
 });
 
 // Update device with parsing

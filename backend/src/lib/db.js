@@ -27,6 +27,8 @@ export async function initSchema() {
 				device_label VARCHAR(50),
 				items_number TEXT,
 				address TEXT,
+				category VARCHAR(255),
+				model_name VARCHAR(255),
 				created_at TIMESTAMP DEFAULT NOW()
 			);
 		`);
@@ -39,6 +41,25 @@ export async function initSchema() {
 					WHERE table_name='devices' AND column_name='user_info_raw'
 				) THEN
 					ALTER TABLE devices ADD COLUMN user_info_raw TEXT;
+				END IF;
+			END
+			$$;
+		`);
+		// Ensure columns exist for category and model_name
+		await client.query(`
+			DO $$
+			BEGIN
+				IF NOT EXISTS (
+					SELECT 1 FROM information_schema.columns
+					WHERE table_name='devices' AND column_name='category'
+				) THEN
+					ALTER TABLE devices ADD COLUMN category VARCHAR(255);
+				END IF;
+				IF NOT EXISTS (
+					SELECT 1 FROM information_schema.columns
+					WHERE table_name='devices' AND column_name='model_name'
+				) THEN
+					ALTER TABLE devices ADD COLUMN model_name VARCHAR(255);
 				END IF;
 			END
 			$$;

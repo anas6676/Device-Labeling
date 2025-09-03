@@ -17,8 +17,11 @@ export default function App() {
   const [editingDevice, setEditingDevice] = useState(null)
   const [editingImport, setEditingImport] = useState(null)
   const hiddenUploadRef = useRef(null)
+  const batchUploadRef = useRef(null)
   const [editBatchTag, setEditBatchTag] = useState('')
   const [deviceFilter, setDeviceFilter] = useState('')
+  const [isUploading, setIsUploading] = useState(false)
+  const [apiHealthy, setApiHealthy] = useState(null)
   const [importFilter, setImportFilter] = useState('')
 
   const selectedImport = useMemo(() => imports.find(i => String(i.id) === String(selectedImportId)), [imports, selectedImportId])
@@ -93,6 +96,8 @@ export default function App() {
   useEffect(() => { 
     refreshImports() 
     refreshAllDevices()
+    // Health check
+    axios.get(`${API}/health`).then(() => setApiHealthy(true)).catch(() => setApiHealthy(false))
   }, [])
   useEffect(() => { refreshDevices(selectedImportId) }, [selectedImportId])
   
@@ -140,18 +145,33 @@ export default function App() {
 
   async function uploadSNFile(f) {
     if (!selectedImportId || !f) return
-    const form = new FormData()
-    form.append('file', f)
-    await axios.post(`${API}/imports/${selectedImportId}/devices/upload`, form, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
-    await refreshDevices(selectedImportId)
+    try {
+      setIsUploading(true)
+      const form = new FormData()
+      form.append('file', f)
+      await axios.post(`${API}/imports/${selectedImportId}/devices/upload`, form)
+      await refreshDevices(selectedImportId)
+    } catch (err) {
+      console.error('Upload failed:', err)
+      const status = err?.response?.status
+      const msg = err?.response?.data?.error || err?.message || 'Unknown error'
+      alert(`Upload failed${status ? ` (HTTP ${status})` : ''}: ${msg}`)
+      throw err
+    } finally {
+      setIsUploading(false)
+    }
   }
 
   async function uploadSNs() {
     if (!selectedImportId || !file) return
-    await uploadSNFile(file)
-    setFile(null)
+    try {
+      await uploadSNFile(file)
+    } finally {
+      setFile(null)
+      if (batchUploadRef.current) {
+        batchUploadRef.current.value = ''
+      }
+    }
   }
 
   async function saveDevice(d) {
@@ -677,14 +697,18 @@ export default function App() {
               type="file" 
               accept=".xlsx,.xls,.csv" 
               style={styles.fileInput}
-              onChange={e => setFile(e.target.files?.[0] || null)} 
+              ref={batchUploadRef}
+              onChange={e => {
+                const picked = (e.target && e.target.files && e.target.files[0]) || null
+                setFile(picked)
+              }} 
             />
             <button 
               style={{...styles.button, ...styles.successButton}}
               onClick={uploadSNs} 
-              disabled={!file}
+              disabled={!file || isUploading}
             >
-              📥 Upload File
+              {isUploading ? '⏳ Uploading...' : '📥 Upload File'}
             </button>
           </div>
         </div>
@@ -955,6 +979,41 @@ export default function App() {
           </span>
         </h3>
         
+        {/* Bulk Update from Excel */}
+        <div style={{ ...styles.filterSection, marginBottom: '16px' }}>
+          <div style={styles.filterRow}>
+            <input
+              ref={batchUploadRef}
+              type="file"
+              accept=".xlsx,.xls,.csv"
+              style={styles.fileInput}
+              onChange={async (e) => {
+                const f = e.target.files?.[0]
+                if (!f) return
+                try {
+                  setIsUploading(true)
+                  const form = new FormData()
+                  form.append('file', f)
+                  await axios.post(`${API}/devices/bulk-update`, form)
+                  await refreshAllDevices()
+                  alert('Bulk update completed')
+                } catch (err) {
+                  console.error('Bulk update failed:', err)
+                  const status = err?.response?.status
+                  const msg = err?.response?.data?.error || err?.message || 'Unknown error'
+                  alert(`Bulk update failed${status ? ` (HTTP ${status})` : ''}: ${msg}`)
+                } finally {
+                  setIsUploading(false)
+                  if (batchUploadRef.current) batchUploadRef.current.value = ''
+                }
+              }}
+            />
+            <div style={{ fontSize: '12px', color: isDarkMode ? '#bdc3c7' : '#7f8c8d' }}>
+              Expected headers: Serial, FRDC, taskCode, name, address, userEmail, userPhone
+            </div>
+          </div>
+        </div>
+
         {/* Quick Filter Section */}
         <div style={styles.filterSection}>
           <div style={styles.filterRow}>

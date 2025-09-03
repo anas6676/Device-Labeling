@@ -19,8 +19,8 @@ function buildRowsFor(type, devices) {
 		return filtered.map((d) => [d.device_label || '']);
 	}
 	if (type === 'asset-import') {
-		const filtered = devices.filter((d) => Boolean(d.items_number && d.items_number.trim()));
-		return filtered.map((d) => [d.sn_device || '', d.items_number || '']);
+		const filtered = devices.filter((d) => Boolean((d.items_number && d.items_number.trim()) || (d.category && d.category.trim()) || (d.model_name && d.model_name.trim())));
+		return filtered.map((d) => [d.sn_device || '', d.items_number || '', d.category || '', d.model_name || '']);
 	}
 	throw new Error('Unknown report type');
 }
@@ -33,7 +33,7 @@ function buildHeadersFor(type) {
 		return ['device_label'];
 	}
 	if (type === 'asset-import') {
-		return ['sn_device', 'items_number'];
+		return ['sn_device', 'items_number', 'category', 'model_name'];
 	}
 	throw new Error('Unknown report type');
 }
