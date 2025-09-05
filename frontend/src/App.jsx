@@ -10,7 +10,7 @@ export default function App() {
   const [batchTag, setBatchTag] = useState('')
   const [file, setFile] = useState(null)
   const [savingId, setSavingId] = useState(null)
-  const [isDarkMode, setIsDarkMode] = useState(false)
+  const [isDarkMode, setIsDarkMode] = useState(true)
   const [activeTab, setActiveTab] = useState('main')
   const [dbDevices, setDbDevices] = useState([])
   const [dbImports, setDbImports] = useState([])
@@ -98,6 +98,8 @@ export default function App() {
     refreshAllDevices()
     // Health check
     axios.get(`${API}/health`).then(() => setApiHealthy(true)).catch(() => setApiHealthy(false))
+    // Set page title
+    document.title = 'Abby-Label - Device Management System'
   }, [])
   useEffect(() => { refreshDevices(selectedImportId) }, [selectedImportId])
   
@@ -122,10 +124,23 @@ export default function App() {
   }, [activeTab])
 
   async function createBatch() {
-    if (!batchTag.trim()) return
-    await axios.post(`${API}/imports`, { batch_tag: batchTag.trim() })
-    setBatchTag('')
-    await refreshImports()
+    const tag = batchTag.trim()
+    if (!tag) return
+    try {
+      const res = await axios.post(`${API}/imports`, { batch_tag: tag })
+      const created = res.data
+      setBatchTag('')
+      await refreshImports()
+      if (created && created.id != null) {
+        setSelectedImportId(String(created.id))
+        setEditBatchTag(created.batch_tag || '')
+      }
+    } catch (err) {
+      console.error('Failed to create batch:', err)
+      const status = err?.response?.status
+      const msg = err?.response?.data?.error || err?.message || 'Unknown error'
+      alert(`Failed to create batch${status ? ` (HTTP ${status})` : ''}: ${msg}`)
+    }
   }
 
   async function renameBatch() {
@@ -253,258 +268,270 @@ export default function App() {
 
   const styles = {
     container: {
-      fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif",
-      padding: '24px',
-      maxWidth: '1400px',
-      margin: '0 auto',
-      background: isDarkMode 
-        ? 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)'
-        : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      minHeight: '100vh',
-      color: isDarkMode ? '#e0e0e0' : '#333',
-      transition: 'all 0.3s ease'
-    },
-    header: {
-      textAlign: 'center',
-      marginBottom: '32px',
-      color: 'white',
-      textShadow: '2px 2px 4px rgba(0,0,0,0.3)',
-      position: 'relative'
-    },
-    themeToggle: {
-      position: 'absolute',
-      top: '0',
-      right: '0',
-      background: isDarkMode 
-        ? 'linear-gradient(45deg, #ffd700, #ffed4e)'
-        : 'linear-gradient(45deg, #2c3e50, #34495e)',
-      color: isDarkMode ? '#1a1a2e' : 'white',
-      border: 'none',
-      borderRadius: '50%',
-      width: '50px',
-      height: '50px',
-      cursor: 'pointer',
-      fontSize: '20px',
-      boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)',
-      transition: 'all 0.3s ease',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center'
-    },
-    appIcon: {
-      width: '120px',
-      height: '120px',
-      borderRadius: '50%',
-      margin: '0 auto 20px',
-      display: 'block',
-      boxShadow: isDarkMode 
-        ? '0 8px 32px rgba(0, 0, 0, 0.5)'
-        : '0 8px 32px rgba(0, 0, 0, 0.3)',
-      border: isDarkMode 
-        ? '4px solid rgba(255, 255, 255, 0.1)'
-        : '4px solid rgba(255, 255, 255, 0.3)',
-      objectFit: 'cover',
-      background: isDarkMode 
-        ? 'linear-gradient(45deg, #2c3e50, #34495e)'
-        : 'linear-gradient(45deg, #fff, #f0f8ff)',
-      padding: '8px',
-      transition: 'all 0.3s ease'
-    },
-    title: {
-      fontSize: '2.5rem',
-      fontWeight: '700',
+      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+      padding: '0',
+      maxWidth: '100%',
       margin: '0',
       background: isDarkMode 
-        ? 'linear-gradient(45deg, #ffd700, #ffed4e)'
-        : 'linear-gradient(45deg, #fff, #f0f8ff)',
-      WebkitBackgroundClip: 'text',
-      WebkitTextFillColor: 'transparent',
-      backgroundClip: 'text',
-      transition: 'all 0.3s ease'
+        ? '#1D2125'
+        : '#F4F5F7',
+      minHeight: '100vh',
+      color: isDarkMode ? '#B3BAC5' : '#172B4D',
+      transition: 'all 0.2s ease'
+    },
+    header: {
+      background: isDarkMode ? '#161A1D' : '#FFFFFF',
+      borderBottom: isDarkMode ? '1px solid #2C3E50' : '1px solid #E1E5E9',
+      padding: '16px 24px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'relative',
+      top: '0',
+      zIndex: '100',
+      boxShadow: isDarkMode 
+        ? '0 1px 3px rgba(0, 0, 0, 0.3)'
+        : '0 1px 3px rgba(0, 0, 0, 0.1)'
+    },
+    themeToggle: {
+      background: isDarkMode ? '#0052CC' : '#F4F5F7',
+      color: isDarkMode ? '#FFFFFF' : '#172B4D',
+      border: isDarkMode ? '1px solid #0052CC' : '1px solid #E1E5E9',
+      borderRadius: '6px',
+      width: '40px',
+      height: '40px',
+      cursor: 'pointer',
+      fontSize: '16px',
+      transition: 'all 0.2s ease',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      position: 'absolute',
+      right: '24px',
+      top: '50%',
+      transform: 'translateY(-50%)',
+      '&:hover': {
+        background: isDarkMode ? '#0065FF' : '#EBECF0'
+      }
+    },
+    appIcon: {
+      width: '64px',
+      height: '64px',
+      borderRadius: '8px',
+      marginRight: '20px',
+      display: 'block',
+      objectFit: 'cover',
+      background: isDarkMode ? '#0052CC' : '#F4F5F7',
+      padding: '8px',
+      transition: 'all 0.2s ease'
+    },
+    title: {
+      fontSize: '20px',
+      fontWeight: '600',
+      margin: '0',
+      color: isDarkMode ? '#FFFFFF' : '#172B4D',
+      display: 'flex',
+      alignItems: 'center',
+      transition: 'all 0.2s ease'
     },
     subtitle: {
-      fontSize: '1.1rem',
-      opacity: '0.9',
-      marginTop: '8px',
-      transition: 'all 0.3s ease'
+      fontSize: '14px',
+      color: isDarkMode ? '#B3BAC5' : '#6B778C',
+      marginTop: '4px',
+      transition: 'all 0.2s ease'
     },
     tabContainer: {
       display: 'flex',
-      justifyContent: 'center',
-      marginBottom: '24px',
-      gap: '8px'
+      background: isDarkMode ? '#161A1D' : '#FFFFFF',
+      borderBottom: isDarkMode ? '1px solid #2C3E50' : '1px solid #E1E5E9',
+      padding: '0 24px',
+      gap: '0'
     },
     tab: {
-      padding: '12px 24px',
-      borderRadius: '8px 8px 0 0',
+      padding: '12px 16px',
+      borderRadius: '0',
       border: 'none',
       fontSize: '14px',
-      fontWeight: '600',
+      fontWeight: '500',
       cursor: 'pointer',
-      transition: 'all 0.3s ease',
-      background: isDarkMode ? 'rgba(44, 62, 80, 0.7)' : 'rgba(255, 255, 255, 0.7)',
-      color: isDarkMode ? '#e0e0e0' : '#333'
+      transition: 'all 0.2s ease',
+      background: 'transparent',
+      color: isDarkMode ? '#B3BAC5' : '#6B778C',
+      borderBottom: '2px solid transparent',
+      '&:hover': {
+        background: isDarkMode ? '#22272B' : '#F4F5F7',
+        color: isDarkMode ? '#FFFFFF' : '#172B4D'
+      }
     },
     activeTab: {
-      background: isDarkMode ? 'rgba(44, 62, 80, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-      color: isDarkMode ? '#ffd700' : '#2c3e50',
-      boxShadow: isDarkMode 
-        ? '0 4px 15px rgba(0, 0, 0, 0.3)'
-        : '0 4px 15px rgba(0, 0, 0, 0.1)'
+      background: 'transparent',
+      color: isDarkMode ? '#FFFFFF' : '#172B4D',
+      borderBottom: isDarkMode ? '2px solid #0052CC' : '2px solid #0052CC',
+      fontWeight: '600'
     },
     section: {
-      background: isDarkMode 
-        ? 'rgba(44, 62, 80, 0.95)'
-        : 'rgba(255, 255, 255, 0.95)',
-      borderRadius: '16px',
-      padding: '24px',
-      marginBottom: '24px',
-      boxShadow: isDarkMode 
-        ? '0 8px 32px rgba(0, 0, 0, 0.3)'
-        : '0 8px 32px rgba(0, 0, 0, 0.1)',
-      backdropFilter: 'blur(10px)',
-      border: isDarkMode 
-        ? '1px solid rgba(255, 255, 255, 0.1)'
-        : '1px solid rgba(255, 255, 255, 0.2)',
-      transition: 'all 0.3s ease'
+      background: isDarkMode ? '#22272B' : '#FFFFFF',
+      borderRadius: '8px',
+      padding: '20px',
+      margin: '16px 24px',
+      border: isDarkMode ? '1px solid #2C3E50' : '1px solid #E1E5E9',
+      transition: 'all 0.2s ease',
+      '&:hover': {
+        borderColor: isDarkMode ? '#3C4A56' : '#C1C7D0'
+      }
     },
     sectionTitle: {
-      fontSize: '1.4rem',
+      fontSize: '16px',
       fontWeight: '600',
       marginBottom: '16px',
-      color: isDarkMode ? '#ffd700' : '#2c3e50',
-      borderBottom: isDarkMode 
-        ? '3px solid #ffd700'
-        : '3px solid #3498db',
-      paddingBottom: '8px',
-      transition: 'all 0.3s ease'
+      color: isDarkMode ? '#FFFFFF' : '#172B4D',
+      borderBottom: 'none',
+      paddingBottom: '0',
+      transition: 'all 0.2s ease'
     },
     input: {
-      padding: '12px 16px',
-      borderRadius: '8px',
+      padding: '8px 12px',
+      borderRadius: '6px',
       border: isDarkMode 
-        ? '2px solid #34495e'
-        : '2px solid #e1e8ed',
+        ? '1px solid #2C3E50'
+        : '1px solid #C1C7D0',
       fontSize: '14px',
-      transition: 'all 0.3s ease',
+      transition: 'all 0.2s ease',
       outline: 'none',
       flex: '1',
       minWidth: '200px',
-      background: isDarkMode ? '#2c3e50' : 'white',
-      color: isDarkMode ? '#e0e0e0' : '#333'
-    },
-    inputFocus: {
-      borderColor: isDarkMode ? '#ffd700' : '#3498db',
-      boxShadow: isDarkMode 
-        ? '0 0 0 3px rgba(255, 215, 0, 0.1)'
-        : '0 0 0 3px rgba(52, 152, 219, 0.1)'
+      background: isDarkMode ? '#1D2125' : '#FFFFFF',
+      color: isDarkMode ? '#B3BAC5' : '#172B4D',
+      '&:focus': {
+        borderColor: '#0052CC',
+        boxShadow: '0 0 0 2px rgba(0, 82, 204, 0.2)'
+      }
     },
     button: {
-      padding: '12px 24px',
-      borderRadius: '8px',
+      padding: '8px 16px',
+      borderRadius: '6px',
       border: 'none',
       fontSize: '14px',
-      fontWeight: '600',
+      fontWeight: '500',
       cursor: 'pointer',
-      transition: 'all 0.3s ease',
-      textTransform: 'uppercase',
-      letterSpacing: '0.5px'
+      transition: 'all 0.2s ease',
+      textTransform: 'none',
+      letterSpacing: '0',
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '6px'
     },
     primaryButton: {
-      background: isDarkMode 
-        ? 'linear-gradient(45deg, #ffd700, #ffed4e)'
-        : 'linear-gradient(45deg, #3498db, #2980b9)',
-      color: isDarkMode ? '#1a1a2e' : 'white',
-      boxShadow: isDarkMode 
-        ? '0 4px 15px rgba(255, 215, 0, 0.3)'
-        : '0 4px 15px rgba(52, 152, 219, 0.3)'
+      background: '#0052CC',
+      color: '#FFFFFF',
+      '&:hover': {
+        background: '#0065FF'
+      },
+      '&:disabled': {
+        background: isDarkMode ? '#2C3E50' : '#C1C7D0',
+        color: isDarkMode ? '#6B778C' : '#6B778C',
+        cursor: 'not-allowed'
+      }
     },
     secondaryButton: {
-      background: isDarkMode 
-        ? 'linear-gradient(45deg, #95a5a6, #7f8c8d)'
-        : 'linear-gradient(45deg, #95a5a6, #7f8c8d)',
-      color: 'white',
-      boxShadow: '0 4px 15px rgba(149, 165, 166, 0.3)'
+      background: isDarkMode ? '#2C3E50' : '#F4F5F7',
+      color: isDarkMode ? '#B3BAC5' : '#172B4D',
+      border: isDarkMode ? '1px solid #2C3E50' : '1px solid #C1C7D0',
+      '&:hover': {
+        background: isDarkMode ? '#3C4A56' : '#EBECF0'
+      }
     },
     dangerButton: {
-      background: 'linear-gradient(45deg, #e74c3c, #c0392b)',
-      color: 'white',
-      boxShadow: '0 4px 15px rgba(231, 76, 60, 0.3)'
+      background: '#DE350B',
+      color: '#FFFFFF',
+      '&:hover': {
+        background: '#FF5630'
+      }
     },
     successButton: {
-      background: isDarkMode 
-        ? 'linear-gradient(45deg, #27ae60, #2ecc71)'
-        : 'linear-gradient(45deg, #27ae60, #229954)',
-      color: 'white',
-      boxShadow: '0 4px 15px rgba(39, 174, 96, 0.3)'
+      background: '#00875A',
+      color: '#FFFFFF',
+      '&:hover': {
+        background: '#00A86B'
+      }
     },
     select: {
-      padding: '12px 16px',
-      borderRadius: '8px',
+      padding: '8px 12px',
+      borderRadius: '6px',
       border: isDarkMode 
-        ? '2px solid #34495e'
-        : '2px solid #e1e8ed',
+        ? '1px solid #2C3E50'
+        : '1px solid #C1C7D0',
       fontSize: '14px',
-      backgroundColor: isDarkMode ? '#2c3e50' : 'white',
-      color: isDarkMode ? '#e0e0e0' : '#333',
+      backgroundColor: isDarkMode ? '#1D2125' : '#FFFFFF',
+      color: isDarkMode ? '#B3BAC5' : '#172B4D',
       cursor: 'pointer',
       outline: 'none',
       minWidth: '200px',
-      transition: 'all 0.3s ease'
+      transition: 'all 0.2s ease',
+      '&:focus': {
+        borderColor: '#0052CC',
+        boxShadow: '0 0 0 2px rgba(0, 82, 204, 0.2)'
+      }
     },
     fileInput: {
-      padding: '8px',
-      borderRadius: '8px',
+      padding: '8px 12px',
+      borderRadius: '6px',
       border: isDarkMode 
-        ? '2px solid #34495e'
-        : '2px solid #e1e8ed',
+        ? '1px solid #2C3E50'
+        : '1px solid #C1C7D0',
       fontSize: '14px',
-      background: isDarkMode ? '#2c3e50' : 'white',
-      color: isDarkMode ? '#e0e0e0' : '#333',
-      transition: 'all 0.3s ease'
+      background: isDarkMode ? '#1D2125' : '#FFFFFF',
+      color: isDarkMode ? '#B3BAC5' : '#172B4D',
+      transition: 'all 0.2s ease'
     },
     table: {
       width: '100%',
       borderCollapse: 'collapse',
       borderRadius: '8px',
       overflow: 'hidden',
-      boxShadow: isDarkMode 
-        ? '0 4px 32px rgba(0, 0, 0, 0.4)'
-        : '0 4px 32px rgba(0, 0, 0, 0.1)',
-      transition: 'all 0.3s ease'
+      border: isDarkMode ? '1px solid #2C3E50' : '1px solid #E1E5E9',
+      transition: 'all 0.2s ease'
     },
     tableHeader: {
-      background: isDarkMode 
-        ? 'linear-gradient(45deg, #1a1a2e, #16213e)'
-        : 'linear-gradient(45deg, #34495e, #2c3e50)',
-      color: 'white',
-      padding: '16px 12px',
+      background: isDarkMode ? '#161A1D' : '#F4F5F7',
+      color: isDarkMode ? '#B3BAC5' : '#6B778C',
+      padding: '12px',
       textAlign: 'left',
       fontWeight: '600',
-      fontSize: '14px'
+      fontSize: '12px',
+      textTransform: 'uppercase',
+      letterSpacing: '0.5px',
+      borderBottom: isDarkMode ? '1px solid #2C3E50' : '1px solid #E1E5E9'
     },
     tableRow: {
-      transition: 'all 0.2s ease'
+      transition: 'all 0.2s ease',
+      '&:hover': {
+        background: isDarkMode ? '#22272B' : '#F4F5F7'
+      }
     },
     tableCell: {
       padding: '12px',
       borderBottom: isDarkMode 
-        ? '1px solid #34495e'
-        : '1px solid #ecf0f1',
+        ? '1px solid #2C3E50'
+        : '1px solid #E1E5E9',
       fontSize: '14px',
-      transition: 'all 0.3s ease'
+      transition: 'all 0.2s ease'
     },
     tableInput: {
       width: '100%',
-      padding: '8px 12px',
-      borderRadius: '6px',
+      padding: '6px 8px',
+      borderRadius: '4px',
       border: isDarkMode 
-        ? '1px solid #34495e'
-        : '1px solid #ddd',
+        ? '1px solid #2C3E50'
+        : '1px solid #C1C7D0',
       fontSize: '13px',
       transition: 'all 0.2s ease',
-      background: isDarkMode ? '#2c3e50' : 'white',
-      color: isDarkMode ? '#e0e0e0' : '#333'
+      background: isDarkMode ? '#1D2125' : '#FFFFFF',
+      color: isDarkMode ? '#B3BAC5' : '#172B4D',
+      '&:focus': {
+        borderColor: '#0052CC',
+        boxShadow: '0 0 0 2px rgba(0, 82, 204, 0.2)'
+      }
     },
     flexRow: {
       display: 'flex',
@@ -525,41 +552,36 @@ export default function App() {
     },
     statusBadge: {
       padding: '4px 8px',
-      borderRadius: '12px',
-      fontSize: '12px',
+      borderRadius: '4px',
+      fontSize: '11px',
       fontWeight: '600',
-      textTransform: 'uppercase'
+      textTransform: 'uppercase',
+      letterSpacing: '0.5px'
     },
     completeBadge: {
-      background: 'linear-gradient(45deg, #27ae60, #2ecc71)',
-      color: 'white'
+      background: '#00875A',
+      color: '#FFFFFF'
     },
     incompleteBadge: {
-      background: isDarkMode 
-        ? 'linear-gradient(45deg, #f39c12, #e67e22)'
-        : 'linear-gradient(45deg, #f39c12, #e67e22)',
-      color: 'white'
+      background: '#FF8B00',
+      color: '#FFFFFF'
     },
     actionButton: {
       padding: '6px 12px',
-      borderRadius: '6px',
+      borderRadius: '4px',
       border: 'none',
       fontSize: '12px',
-      fontWeight: '600',
+      fontWeight: '500',
       cursor: 'pointer',
       transition: 'all 0.2s ease',
       margin: '0 4px'
     },
     filterSection: {
-      marginBottom: '20px',
+      marginBottom: '16px',
       padding: '16px',
-      borderRadius: '8px',
-      background: isDarkMode 
-        ? 'linear-gradient(135deg, #2c3e50, #34495e)'
-        : 'linear-gradient(135deg, #ecf0f1, #bdc3c7)',
-      border: isDarkMode 
-        ? '1px solid #34495e'
-        : '1px solid #bdc3c7'
+      borderRadius: '6px',
+      background: isDarkMode ? '#161A1D' : '#F4F5F7',
+      border: isDarkMode ? '1px solid #2C3E50' : '1px solid #E1E5E9'
     },
     filterRow: {
       display: 'flex',
@@ -569,46 +591,41 @@ export default function App() {
     },
     filterInput: {
       flex: 1,
-      padding: '12px 16px',
-      borderRadius: '8px',
+      padding: '8px 12px',
+      borderRadius: '6px',
       border: isDarkMode 
-        ? '1px solid #34495e'
-        : '1px solid #ddd',
+        ? '1px solid #2C3E50'
+        : '1px solid #C1C7D0',
       fontSize: '14px',
       transition: 'all 0.2s ease',
-      background: isDarkMode ? '#2c3e50' : 'white',
-      color: isDarkMode ? '#e0e0e0' : '#333',
-      boxShadow: isDarkMode 
-        ? '0 2px 8px rgba(0,0,0,0.3)'
-        : '0 2px 8px rgba(0,0,0,0.1)'
+      background: isDarkMode ? '#1D2125' : '#FFFFFF',
+      color: isDarkMode ? '#B3BAC5' : '#172B4D',
+      '&:focus': {
+        borderColor: '#0052CC',
+        boxShadow: '0 0 0 2px rgba(0, 82, 204, 0.2)'
+      }
     },
     filterInfo: {
       padding: '8px 12px',
-      borderRadius: '6px',
-      background: isDarkMode 
-        ? 'rgba(39, 174, 96, 0.1)'
-        : 'rgba(39, 174, 96, 0.1)',
-      border: isDarkMode 
-        ? '1px solid rgba(39, 174, 96, 0.3)'
-        : '1px solid rgba(39, 174, 96, 0.3)'
+      borderRadius: '4px',
+      background: isDarkMode ? '#1D2125' : '#FFFFFF',
+      border: isDarkMode ? '1px solid #2C3E50' : '1px solid #E1E5E9',
+      color: isDarkMode ? '#B3BAC5' : '#172B4D'
     },
     noResults: {
       textAlign: 'center',
-      padding: '20px',
-      background: isDarkMode 
-        ? 'rgba(52, 73, 94, 0.1)'
-        : 'rgba(236, 240, 241, 0.5)',
-      borderRadius: '8px',
-      border: isDarkMode 
-        ? '1px solid rgba(52, 73, 94, 0.3)'
-        : '1px solid rgba(189, 195, 199, 0.3)'
+      padding: '40px 20px',
+      background: isDarkMode ? '#161A1D' : '#F4F5F7',
+      borderRadius: '6px',
+      border: isDarkMode ? '1px solid #2C3E50' : '1px solid #E1E5E9',
+      color: isDarkMode ? '#6B778C' : '#6B778C'
     }
   }
 
   const renderMainApp = () => (
     <>
       <div style={styles.section}>
-        <h3 style={styles.sectionTitle}>🚀 Create New Batch</h3>
+        <h3 style={styles.sectionTitle}>Create New Batch</h3>
         <div style={styles.flexRow}>
           <input 
             style={styles.input} 
@@ -619,14 +636,15 @@ export default function App() {
           <button 
             style={{...styles.button, ...styles.primaryButton}}
             onClick={createBatch}
+            disabled={!batchTag.trim() || apiHealthy === false}
           >
-            ✨ Create Batch
+            Create Batch
           </button>
         </div>
       </div>
 
       <div style={styles.section}>
-        <h3 style={styles.sectionTitle}>📋 Select & Manage Batch</h3>
+        <h3 style={styles.sectionTitle}>Select & Manage Batch</h3>
         <div style={styles.flexRow}>
           <select 
             style={styles.select} 
@@ -636,7 +654,7 @@ export default function App() {
             <option value="">-- Select a batch --</option>
             {imports.map(b => (
               <option key={b.id} value={b.id}>
-                📦 {b.batch_tag} (ID: #{b.id})
+                {b.batch_tag} (ID: #{b.id})
               </option>
             ))}
           </select>
@@ -645,7 +663,7 @@ export default function App() {
             onClick={() => hiddenUploadRef.current?.click()} 
             disabled={!selectedImportId}
           >
-            📤 Upload Excel SNs
+            Upload Excel SNs
           </button>
           <input 
             ref={hiddenUploadRef} 
@@ -665,7 +683,7 @@ export default function App() {
 
       {selectedImport && (
         <div style={styles.section}>
-          <h3 style={styles.sectionTitle}>⚙️ Batch Controls</h3>
+          <h3 style={styles.sectionTitle}>Batch Controls</h3>
           <div style={styles.flexRow}>
             <input 
               style={styles.input} 
@@ -677,13 +695,13 @@ export default function App() {
               style={{...styles.button, ...styles.secondaryButton}}
               onClick={renameBatch}
             >
-              ✏️ Rename
+              Rename
             </button>
             <button 
               style={{...styles.button, ...styles.dangerButton}}
               onClick={deleteBatch}
             >
-              🗑️ Delete
+              Delete
             </button>
           </div>
         </div>
@@ -691,7 +709,7 @@ export default function App() {
 
       {selectedImport && (
         <div style={styles.section}>
-          <h3 style={styles.sectionTitle}>📁 Upload Device Serial Numbers</h3>
+          <h3 style={styles.sectionTitle}>Upload Device Serial Numbers</h3>
           <div style={styles.flexRow}>
             <input 
               type="file" 
@@ -708,7 +726,7 @@ export default function App() {
               onClick={uploadSNs} 
               disabled={!file || isUploading}
             >
-              {isUploading ? '⏳ Uploading...' : '📥 Upload File'}
+              {isUploading ? 'Uploading...' : 'Upload File'}
             </button>
           </div>
         </div>
@@ -717,7 +735,7 @@ export default function App() {
       {selectedImport && (
         <div style={styles.section}>
           <h3 style={styles.sectionTitle}>
-            📱 Devices in Batch: {devices.length} total
+            Devices in Batch: {devices.length} total
           </h3>
           <div style={{ overflowX: 'auto' }}>
             <table style={styles.table}>
@@ -792,7 +810,7 @@ export default function App() {
                           onClick={() => saveDevice(d)} 
                           disabled={savingId === d.id}
                         >
-                          {savingId === d.id ? '⏳ Saving...' : (complete ? '🔄 Update' : '💾 Save')}
+                          {savingId === d.id ? 'Saving...' : (complete ? 'Update' : 'FuckOff')}
                         </button>
                       </td>
                     </tr>
@@ -806,43 +824,43 @@ export default function App() {
 
       {selectedImport && (
         <div style={styles.section}>
-          <h3 style={styles.sectionTitle}>📊 Generate Reports</h3>
+          <h3 style={styles.sectionTitle}>Generate Reports</h3>
           <div style={styles.reportGrid}>
             <button 
               style={{...styles.button, ...styles.primaryButton}}
               onClick={() => downloadReport('label-carton', 'xlsx')}
             >
-              📋 Label Carton (XLSX)
+              Label Carton (XLSX)
             </button>
             <button 
               style={{...styles.button, ...styles.primaryButton}}
               onClick={() => downloadReport('label-carton', 'csv')}
             >
-              📋 Label Carton (CSV)
+              Label Carton (CSV)
             </button>
             <button 
               style={{...styles.button, ...styles.successButton}}
               onClick={() => downloadReport('device-label', 'xlsx')}
             >
-              🏷️ Device Label (XLSX)
+              Device Label (XLSX)
             </button>
             <button 
               style={{...styles.button, ...styles.successButton}}
               onClick={() => downloadReport('device-label', 'csv')}
             >
-              🏷️ Device Label (CSV)
+              Device Label (CSV)
             </button>
             <button 
               style={{...styles.button, ...styles.secondaryButton}}
               onClick={() => downloadReport('asset-import', 'xlsx')}
             >
-              💼 Asset Import (XLSX)
+              Asset Import (XLSX)
             </button>
             <button 
               style={{...styles.button, ...styles.secondaryButton}}
               onClick={() => downloadReport('asset-import', 'csv')}
             >
-              💼 Asset Import (CSV)
+              Asset Import (CSV)
             </button>
           </div>
         </div>
@@ -853,7 +871,7 @@ export default function App() {
   const renderDatabaseManager = () => (
     <>
       <div style={styles.section}>
-        <h3 style={styles.sectionTitle}>🗄️ Database Management</h3>
+        <h3 style={styles.sectionTitle}>Database Management</h3>
         <p style={{ color: isDarkMode ? '#bdc3c7' : '#7f8c8d', marginBottom: '16px' }}>
           Direct database editing - be careful with changes!
         </p>
@@ -861,7 +879,7 @@ export default function App() {
 
       <div style={styles.section}>
         <h3 style={styles.sectionTitle}>
-          📦 Imports Table 
+          Imports Table 
           <span style={{ 
             fontSize: '14px', 
             fontWeight: '400', 
@@ -877,7 +895,7 @@ export default function App() {
           <div style={styles.filterRow}>
             <input
               style={styles.filterInput}
-              placeholder="🔍 Quick filter by ID or Batch Tag..."
+              placeholder="Quick filter by ID or Batch Tag..."
               value={importFilter}
               onChange={(e) => setImportFilter(e.target.value)}
             />
@@ -886,13 +904,13 @@ export default function App() {
               onClick={() => setImportFilter('')}
               title="Clear filter"
             >
-              🗑️ Clear
+              Clear
             </button>
           </div>
           {importFilter && (
             <div style={styles.filterInfo}>
               <span style={{ color: isDarkMode ? '#27ae60' : '#27ae60', fontWeight: '600' }}>
-                🔍 Filtering: "{importFilter}" • Showing {filteredImports.length} of {dbImports.length} imports
+                Filtering: "{importFilter}" • Showing {filteredImports.length} of {dbImports.length} imports
               </span>
             </div>
           )}
@@ -933,13 +951,13 @@ export default function App() {
                           style={{...styles.actionButton, ...styles.successButton}}
                           onClick={() => updateImportInDb(editingImport)}
                         >
-                          💾 Save
+                          FuckOff
                         </button>
                         <button
                           style={{...styles.actionButton, ...styles.secondaryButton}}
                           onClick={() => setEditingImport(null)}
                         >
-                          ❌ Cancel
+                          Cancel
                         </button>
                       </>
                     ) : (
@@ -948,13 +966,13 @@ export default function App() {
                           style={{...styles.actionButton, ...styles.primaryButton}}
                           onClick={() => setEditingImport(imp)}
                         >
-                          ✏️ Edit
+                          Edit
                         </button>
                         <button
                           style={{...styles.actionButton, ...styles.dangerButton}}
                           onClick={() => deleteImportFromDb(imp.id)}
                         >
-                          🗑️ Delete
+                          Delete
                         </button>
                       </>
                     )}
@@ -968,7 +986,7 @@ export default function App() {
 
       <div style={styles.section}>
         <h3 style={styles.sectionTitle}>
-          📱 Devices Table 
+          Devices Table 
           <span style={{ 
             fontSize: '14px', 
             fontWeight: '400', 
@@ -1019,7 +1037,7 @@ export default function App() {
           <div style={styles.filterRow}>
             <input
               style={styles.filterInput}
-              placeholder="🔍 Quick filter by ID, SN, Name, Email, Phone, Work Order, Device Label, Items, or Address..."
+              placeholder="Quick filter by ID, SN, Name, Email, Phone, Work Order, Device Label, Items, or Address..."
               value={deviceFilter}
               onChange={(e) => setDeviceFilter(e.target.value)}
             />
@@ -1028,13 +1046,13 @@ export default function App() {
               onClick={() => setDeviceFilter('')}
               title="Clear filter"
             >
-              🗑️ Clear
+              Clear
             </button>
           </div>
           {deviceFilter && (
             <div style={styles.filterInfo}>
               <span style={{ color: isDarkMode ? '#27ae60' : '#27ae60', fontWeight: '600' }}>
-                🔍 Filtering: "{deviceFilter}" • Showing {filteredDevices.length} of {dbDevices.length} devices
+                Filtering: "{deviceFilter}" • Showing {filteredDevices.length} of {dbDevices.length} devices
               </span>
             </div>
           )}
@@ -1049,7 +1067,7 @@ export default function App() {
                 color: isDarkMode ? '#bdc3c7' : '#7f8c8d',
                 fontSize: '16px'
               }}>
-                {deviceFilter ? `🔍 No devices found matching "${deviceFilter}"` : '📱 No devices available'}
+                {deviceFilter ? `No devices found matching "${deviceFilter}"` : 'No devices available'}
               </p>
             </div>
           ) : (
@@ -1180,13 +1198,13 @@ export default function App() {
                           style={{...styles.actionButton, ...styles.successButton}}
                           onClick={() => updateDeviceInDb(editingDevice)}
                         >
-                          💾 Save
+                          FuckOff
                         </button>
                         <button
                           style={{...styles.actionButton, ...styles.secondaryButton}}
                           onClick={() => setEditingDevice(null)}
                         >
-                          ❌ Cancel
+                          Cancel
                         </button>
                       </>
                     ) : (
@@ -1195,13 +1213,13 @@ export default function App() {
                           style={{...styles.actionButton, ...styles.primaryButton}}
                           onClick={() => setEditingDevice(device)}
                         >
-                          ✏️ Edit
+                          Edit
                         </button>
                         <button
                           style={{...styles.actionButton, ...styles.dangerButton}}
                           onClick={() => deleteDeviceFromDb(device.id)}
                         >
-                          🗑️ Delete
+                          Delete
                         </button>
                       </>
                     )}
@@ -1219,6 +1237,21 @@ export default function App() {
   return (
     <div style={styles.container}>
       <div style={styles.header}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <img 
+            src="/src/assets/3C20C8BC-A864-4744-9E42-AC17F49C2423_1_105_c.jpeg" 
+            alt="Abby-Label App Icon" 
+            style={styles.appIcon}
+            onError={(e) => {
+              e.target.style.display = 'none'
+            }}
+          />
+          <div>
+            <h1 style={styles.title}>Abby-Label</h1>
+            <p style={styles.subtitle}>Professional Device Management & Labeling System</p>
+          </div>
+        </div>
+        
         <button 
           style={styles.themeToggle}
           onClick={() => setIsDarkMode(!isDarkMode)}
@@ -1226,17 +1259,6 @@ export default function App() {
         >
           {isDarkMode ? '☀️' : '🌙'}
         </button>
-        
-        <img 
-          src="/src/assets/3C20C8BC-A864-4744-9E42-AC17F49C2423_1_105_c.jpeg" 
-          alt="Warehouse Labeler App Icon" 
-          style={styles.appIcon}
-          onError={(e) => {
-            e.target.style.display = 'none'
-          }}
-        />
-        <h1 style={styles.title}>🏭 Warehouse Device Labeling</h1>
-        <p style={styles.subtitle}>Professional Device Management & Labeling System</p>
       </div>
 
       <div style={styles.tabContainer}>
@@ -1244,13 +1266,13 @@ export default function App() {
           style={{...styles.tab, ...(activeTab === 'main' ? styles.activeTab : {})}}
           onClick={() => setActiveTab('main')}
         >
-          🏠 Main App
+          Main App
         </button>
         <button
           style={{...styles.tab, ...(activeTab === 'database' ? styles.activeTab : {})}}
           onClick={() => setActiveTab('database')}
         >
-          🗄️ Database Manager
+          Database Manager
         </button>
       </div>
 
